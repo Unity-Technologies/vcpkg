@@ -7,7 +7,7 @@ build_linux:
   commands:
     - |
       set -euxo pipefail
-      git checkout 93492fec9d33dad3bede1b1db4952b9f914c5349
+      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
       sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
       ./bootstrap-vcpkg.sh
       ./vcpkg install opentelemetry-cpp[otlp] --triplet=x64-linux-release
@@ -62,7 +62,7 @@ build_curl_centos7:
   commands:
     - |
       set -euxo pipefail
-      git checkout 93492fec9d33dad3bede1b1db4952b9f914c5349
+      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
       sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
       ./bootstrap-vcpkg.sh
       ./vcpkg install curl --triplet=x64-linux-release
@@ -81,7 +81,7 @@ build_mac_amd64:
   commands:
     - |
       set -euxo pipefail
-      git checkout 93492fec9d33dad3bede1b1db4952b9f914c5349
+      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
       brew install pkg-config
       ./bootstrap-vcpkg.sh
       cp -f triplets/x64-osx.cmake triplets/x64-osx-10.14.cmake
@@ -133,7 +133,7 @@ build_mac_arm64:
   commands:
     - |
       set -euxo pipefail
-      git checkout 93492fec9d33dad3bede1b1db4952b9f914c5349
+      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
       brew install pkg-config
       ./bootstrap-vcpkg.sh
       cp -f triplets/community/arm64-osx.cmake triplets/community/arm64-osx-10.14.cmake
@@ -184,10 +184,11 @@ build_windows:
     type: Unity::VM
   interpreter: powershell
   commands:
+    - git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+
     - |
       $ErrorActionPreference = "Stop"
       trap { $host.SetShouldExit(1) }
-      git checkout 93492fec9d33dad3bede1b1db4952b9f914c5349
       .\bootstrap-vcpkg.bat
       .\vcpkg install opentelemetry-cpp[otlp]:x64-windows-static
       mkdir pkgme
