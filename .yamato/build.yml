@@ -197,7 +197,13 @@ build_windows:
       Copy-Item -Force -Path installed\x64-windows-static\lib\libcrypto.lib -Destination pkgme/lib/
       Copy-Item -Force -Path installed\x64-windows-static\lib\libssl.lib -Destination pkgme/lib/
       Copy-Item -Force -Path installed\x64-windows-static\lib\opentelemetry*.lib -Destination pkgme/lib/
-      Copy-Item -Force -Path installed\x64-windows-static\lib\libcurl.lib -Destination pkgme/lib/
+
+      # libcurl.lib built with vs2019 gives unresolved external symbol __GSHandlerCheck_EH4
+      # errors on win7 (and a bunch of other unresolved symbols). Use a version built with vs2017.
+      # See the build_curl_vs2017 pipeline dependency.
+      #Copy-Item -Force -Path installed\x64-windows-static\lib\libcurl.lib -Destination pkgme\lib\
+      Copy-Item -Force -Path curl-libs\libcurl.lib -Destination pkgme\lib\
+
       Copy-Item -Force -Path installed\x64-windows-static\lib\zlib.lib -Destination pkgme/lib/
       Copy-Item -Force -Recurse -Path installed\x64-windows-static\include\opentelemetry -Destination pkgme\include\opentelemetry
       Copy-Item -Force -Recurse -Path installed\x64-windows-static\include\google -Destination pkgme\include\google
@@ -238,3 +244,27 @@ build_windows:
     opentelemetry-cpp-stevedore-pkg:
       paths:
         - opentelemetry-cpp-win-amd64.zip
+  dependencies:
+    - .yamato/build.yml#build_curl_vs2017
+
+build_curl_vs2017:
+  name: build curl with vs2017
+  agent:
+    image: cds-ops/win10-vs2017:v0.0.7-942646
+    flavor: b1.xlarge
+    type: Unity::VM
+  interpreter: powershell
+  commands:
+    - git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+
+    - |
+      $ErrorActionPreference = "Stop"
+      trap { $host.SetShouldExit(1) }
+      ./bootstrap-vcpkg.bat
+      ./vcpkg install curl --triplet=x64-windows-static
+      mkdir curl-libs
+      Copy-Item -Force -Path installed\x64-windows-static\lib\* -Destination curl-libs\
+  artifacts:
+    curl-libs:
+      paths:
+        - curl-libs/**
