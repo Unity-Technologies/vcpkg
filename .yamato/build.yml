@@ -75,7 +75,8 @@ build_curl_centos7:
 build_mac_amd64:
   name: build mac amd64
   agent:
-    image: build-system/unity-macos-10.15:v1.0.3-1026271
+    # This is the "minimal spec" image we test against.
+    image: build-system/bee-macos-10.15-xcode:v0.1.2-1006613
     flavor: b1.large
     type: Unity::VM::osx
   commands:
