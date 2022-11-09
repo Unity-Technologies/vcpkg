@@ -8,7 +8,7 @@ build_linux:
     - |
       set -euxo pipefail
       git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
-      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
+      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make python3
       ./bootstrap-vcpkg.sh
       ./vcpkg install opentelemetry-cpp[otlp] --triplet=x64-linux-release
       rm -rf pkgme
