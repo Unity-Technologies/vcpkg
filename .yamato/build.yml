@@ -7,8 +7,8 @@ build_linux:
   commands:
     - |
       set -euxo pipefail
-      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
-      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
+      git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
+      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make python3
       ./bootstrap-vcpkg.sh
       ./vcpkg install opentelemetry-cpp[otlp] --triplet=x64-linux-release
       rm -rf pkgme
@@ -62,7 +62,7 @@ build_curl_centos7:
   commands:
     - |
       set -euxo pipefail
-      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+      git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
       sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
       ./bootstrap-vcpkg.sh
       ./vcpkg install curl --triplet=x64-linux-release
@@ -82,7 +82,7 @@ build_mac_amd64:
   commands:
     - |
       set -euxo pipefail
-      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+      git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
       brew install pkg-config
       ./bootstrap-vcpkg.sh
       cp -f triplets/x64-osx.cmake triplets/x64-osx-10.14.cmake
@@ -134,7 +134,7 @@ build_mac_arm64:
   commands:
     - |
       set -euxo pipefail
-      git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+      git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
       brew install pkg-config
       ./bootstrap-vcpkg.sh
       cp -f triplets/community/arm64-osx.cmake triplets/community/arm64-osx-10.14.cmake
@@ -185,7 +185,7 @@ build_windows:
     type: Unity::VM
   interpreter: powershell
   commands:
-    - git checkout 308ea14b9613706d1f95f3d508c3a5c4de31d0da
+    - git checkout 16f2ec16633791bcc36253f864c16ea2f4beada9
 
     - |
       $ErrorActionPreference = "Stop"
