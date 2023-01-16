@@ -1,0 +1,319 @@
+{% assign vcpkg_repo_baseline_commit = "f14984af3738e69f197bf0e647a8dca12de92996" %}
+{% assign opentelemetry_cpp_version = "1.8.1" %}
+{% assign macos_arm64_grpc_version = "1.50.1" %}
+
+{% assign linux_triplet = "x64-linux-release" %}
+{% assign macos_amd64_triplet = "x64-osx-10.14-release" %}
+{% assign macos_arm64_triplet = "arm64-osx-10.14-release" %}
+{% assign windows_triplet = "x64-windows-static" %}
+
+build_linux:
+  name: build linux
+  agent:
+    image: slough-ops/rocky-8.5-base:v0.0.2-1101886
+    flavor: b1.large
+    type: Unity::VM
+  variables:
+    VCPKG_DEFAULT_TRIPLET: {{ linux_triplet }}
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+    OTEL_CPP_VERSION: {{ opentelemetry_cpp_version }}
+  commands:
+    - |
+      set -euxo pipefail
+      sed -i 's/BASELINE_COMMIT/'"${VCPKG_REPO_BASELINE_COMMIT}"'/g' vcpkg.json
+      sed -i 's/OTEL_CPP_VERSION/'"${OTEL_CPP_VERSION}"'/g' vcpkg.json
+      git stash
+      git checkout "${VCPKG_REPO_BASELINE_COMMIT}"
+      git stash pop || true
+      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make python3
+      ./bootstrap-vcpkg.sh
+      ./vcpkg install
+      rm -rf pkgme
+      mkdir -p pkgme/lib pkgme/include
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libproto*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libopentelemetry*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libz.a pkgme/lib/
+      # libcurl.a build on rocky 8.5 depends on fnctl64 which isn't available in our sysroot.
+      # Until the sysroot is updated to match our new minspec, try using curl from the old
+      # sysroot (see the build_curl_centos7 dependency).
+      #cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcurl.a pkgme/lib/
+      cp curl-libs/libcurl.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcrypto.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libssl.a pkgme/lib/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/opentelemetry pkgme/include/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/google pkgme/include/
+      echo -e "# vcpkg's LICENSE.txt\n" > pkgme/LICENSE.md
+      cat LICENSE.txt >> pkgme/LICENSE.md
+      echo -e "\n# vcpkg's NOTICE.txt\n" >> pkgme/LICENSE.md
+      cat NOTICE.txt >> pkgme/LICENSE.md
+      echo -e "\n# curl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/curl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# openssl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/openssl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# opentelemetry-cpp\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/opentelemetry-cpp/copyright >> pkgme/LICENSE.md
+      echo -e "\n# protobuf\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/protobuf/copyright >> pkgme/LICENSE.md
+      echo -e "\n# zlib\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/zlib/copyright >> pkgme/LICENSE.md
+      cd pkgme
+      chmod -R u+w .
+      find . -exec touch -d 1970-01-01 '{}' ';'
+      rm -f ../opentelemetry-cpp-lin-amd64.zip
+      zip -r ../opentelemetry-cpp-lin-amd64.zip *
+      cd ..
+      rm -rf pkgme
+  artifacts:
+    opentelemetry-cpp-stevedore-pkg:
+      paths:
+        - opentelemetry-cpp-lin-amd64.zip
+  dependencies:
+    - .yamato/build-and-upload.yml#build_curl_centos7
+
+build_curl_centos7:
+  name: build curl on centos7
+  agent:
+    image: slough-ops/centos-7-base:v0.3.2-1010409
+    flavor: b1.large
+    type: Unity::VM
+  variables:
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+  commands:
+    - |
+      set -euxo pipefail
+      git checkout "${VCPKG_REPO_BASELINE_COMMIT}"
+      sudo yum install -y perl-IPC-Cmd curl zip unzip tar gcc-c++ make
+      ./bootstrap-vcpkg.sh
+      ./vcpkg install curl --triplet={{ linux_triplet }}
+      cp -ax installed/{{ linux_triplet }}/lib curl-libs
+  artifacts:
+    curl-libs:
+      paths:
+        - curl-libs/**
+
+build_mac_amd64:
+  name: build mac amd64
+  agent:
+    # This is the "minimal spec" image we test against.
+    image: build-system/bee-macos-10.15-xcode:v0.1.2-1006613
+    flavor: b1.large
+    type: Unity::VM::osx
+  variables:
+    VCPKG_DEFAULT_TRIPLET: {{ macos_amd64_triplet }}
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+    OTEL_CPP_VERSION: {{ opentelemetry_cpp_version }}
+  commands:
+    - |
+      set -euxo pipefail
+      sed -i '' 's/BASELINE_COMMIT/'"${VCPKG_REPO_BASELINE_COMMIT}"'/g' vcpkg.json
+      sed -i '' 's/OTEL_CPP_VERSION/'"${OTEL_CPP_VERSION}"'/g' vcpkg.json
+      git stash
+      git checkout "${VCPKG_REPO_BASELINE_COMMIT}"
+      git stash pop || true
+      brew install pkg-config
+      ./bootstrap-vcpkg.sh
+      cp -f triplets/community/x64-osx-release.cmake triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_OSX_DEPLOYMENT_TARGET 10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_C_FLAGS -mmacosx-version-min=10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_CXX_FLAGS -mmacosx-version-min=10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      ./vcpkg install
+      rm -rf pkgme
+      mkdir -p pkgme/lib pkgme/include
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libproto*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libopentelemetry*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libz.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcurl.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcrypto.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libssl.a pkgme/lib/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/opentelemetry pkgme/include/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/google pkgme/include/
+      echo -e "# vcpkg's LICENSE.txt\n" > pkgme/LICENSE.md
+      cat LICENSE.txt >> pkgme/LICENSE.md
+      echo -e "\n# vcpkg's NOTICE.txt\n" >> pkgme/LICENSE.md
+      cat NOTICE.txt >> pkgme/LICENSE.md
+      echo -e "\n# curl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/curl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# openssl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/openssl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# opentelemetry-cpp\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/opentelemetry-cpp/copyright >> pkgme/LICENSE.md
+      echo -e "\n# protobuf\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/protobuf/copyright >> pkgme/LICENSE.md
+      echo -e "\n# zlib\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/zlib/copyright >> pkgme/LICENSE.md
+      cd pkgme
+      chmod -R u+w .
+      rm -f ../opentelemetry-cpp-mac-amd64.zip
+      zip -r ../opentelemetry-cpp-mac-amd64.zip *
+      cd ..
+      rm -rf pkgme
+  artifacts:
+    opentelemetry-cpp-stevedore-pkg:
+      paths:
+        - opentelemetry-cpp-mac-amd64.zip
+
+build_mac_arm64:
+  name: build mac arm64
+  agent:
+    image: build-system/unity-macos-10.15:v1.0.3-1026271
+    flavor: b1.large
+    type: Unity::VM::osx
+  variables:
+    VCPKG_DEFAULT_TRIPLET: {{ macos_arm64_triplet }}
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+    OTEL_CPP_VERSION: {{ opentelemetry_cpp_version }}
+    GRPC_VERSION: {{ macos_arm64_grpc_version }}
+  commands:
+    - |
+      set -euxo pipefail
+      sed -i '' 's/BASELINE_COMMIT/'"${VCPKG_REPO_BASELINE_COMMIT}"'/g' vcpkg.json
+      sed -i '' 's/OTEL_CPP_VERSION/'"${OTEL_CPP_VERSION}"'/g' vcpkg.json
+      sed -i '' 's/BASELINE_COMMIT/'"${VCPKG_REPO_BASELINE_COMMIT}"'/g' vcpkg-grpc.json
+      sed -i '' 's/GRPC_VERSION/'"${GRPC_VERSION}"'/g' vcpkg-grpc.json
+      git stash
+      git checkout "${VCPKG_REPO_BASELINE_COMMIT}"
+      git stash pop || true
+      brew install pkg-config
+      ./bootstrap-vcpkg.sh
+      cp -f triplets/community/arm64-osx.cmake triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_OSX_DEPLOYMENT_TARGET 10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_C_FLAGS -mmacosx-version-min=10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_CXX_FLAGS -mmacosx-version-min=10.14)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      echo "set(VCPKG_BUILD_TYPE release)" >> triplets/community/${VCPKG_DEFAULT_TRIPLET}.cmake
+      mv vcpkg.json vcpkg-otelcpp.json
+      mv vcpkg-grpc.json vcpkg.json
+      ./vcpkg install
+      cp -r vcpkg_installed/x64-osx/tools/grpc/ vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/tools/grpc/
+      rm vcpkg.json
+      mv vcpkg-otelcpp.json vcpkg.json
+      ./vcpkg install
+      rm -rf pkgme
+      mkdir -p pkgme/lib pkgme/include
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libproto*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libopentelemetry*.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libz.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcurl.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libcrypto.a pkgme/lib/
+      cp vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/lib/libssl.a pkgme/lib/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/opentelemetry pkgme/include/
+      cp -r vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/include/google pkgme/include/
+      echo -e "# vcpkg's LICENSE.txt\n" > pkgme/LICENSE.md
+      cat LICENSE.txt >> pkgme/LICENSE.md
+      echo -e "\n# vcpkg's NOTICE.txt\n" >> pkgme/LICENSE.md
+      cat NOTICE.txt >> pkgme/LICENSE.md
+      echo -e "\n# curl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/curl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# openssl\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/openssl/copyright >> pkgme/LICENSE.md
+      echo -e "\n# opentelemetry-cpp\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/opentelemetry-cpp/copyright >> pkgme/LICENSE.md
+      echo -e "\n# protobuf\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/protobuf/copyright >> pkgme/LICENSE.md
+      echo -e "\n# zlib\n" >> pkgme/LICENSE.md
+      cat vcpkg_installed/${VCPKG_DEFAULT_TRIPLET}/share/zlib/copyright >> pkgme/LICENSE.md
+      cd pkgme
+      chmod -R u+w .
+      rm -f ../opentelemetry-cpp-mac-arm64.zip
+      zip -r ../opentelemetry-cpp-mac-arm64.zip *
+      cd ..
+      rm -rf pkgme
+  artifacts:
+    opentelemetry-cpp-stevedore-pkg:
+      paths:
+        - opentelemetry-cpp-mac-arm64.zip
+
+build_windows:
+  name: build windows
+  agent:
+    image: cds-ops/win10-vs2017:v0.0.7-942646
+    flavor: b1.xlarge
+    type: Unity::VM
+  interpreter: powershell
+  variables:
+    VCPKG_DEFAULT_TRIPLET: {{ windows_triplet }}
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+    OTEL_CPP_VERSION: {{ opentelemetry_cpp_version }}
+  commands:
+    - |
+      $ErrorActionPreference = "Stop"
+      trap { $host.SetShouldExit(1) }
+      powershell -Command "(Get-Content vcpkg.json) -replace 'BASELINE_COMMIT', '$env:VCPKG_REPO_BASELINE_COMMIT' | Out-File -encoding ASCII vcpkg.json"
+      powershell -Command "(Get-Content vcpkg.json) -replace 'OTEL_CPP_VERSION', '$env:OTEL_CPP_VERSION' | Out-File -encoding ASCII vcpkg.json"
+      git stash
+      git checkout "$env:VCPKG_REPO_BASELINE_COMMIT"
+    - git stash pop
+    - |
+      $ErrorActionPreference = "Stop"
+      trap { $host.SetShouldExit(1) }
+      .\bootstrap-vcpkg.bat
+      .\vcpkg install
+      mkdir pkgme
+      mkdir pkgme\include
+      mkdir pkgme\lib
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\libproto*.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\libcrypto.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\libssl.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\opentelemetry*.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\libcurl.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\lib\zlib.lib" -Destination pkgme\lib\
+      Copy-Item -Force -Recurse -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\include\opentelemetry" -Destination pkgme\include\opentelemetry
+      Copy-Item -Force -Recurse -Path "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\include\google" -Destination pkgme\include\google
+      echo "# vcpkg's LICENSE.txt" > pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat LICENSE.txt >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# vcpkg's NOTICE.txt" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat NOTICE.txt >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# curl" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\share\curl\copyright" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# openssl" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\share\openssl\copyright" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# opentelemetry-cpp" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\share\opentelemetry-cpp\copyright" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# protobuf" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\share\protobuf\copyright" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      echo "# zlib" >> pkgme\LICENSE.md.utf16
+      echo "" >> pkgme\LICENSE.md.utf16
+      cat "vcpkg_installed\$env:VCPKG_DEFAULT_TRIPLET\share\zlib\copyright" >> pkgme\LICENSE.md.utf16
+      Get-Content pkgme\LICENSE.md.utf16 | Set-Content -Encoding utf8 pkgme\LICENSE.md
+      rm pkgme\LICENSE.md.utf16
+      cd pkgme
+      7z.exe a -tzip ..\opentelemetry-cpp-win-amd64.zip *
+      cd ..
+      rm -r pkgme
+  artifacts:
+    opentelemetry-cpp-stevedore-pkg:
+      paths:
+        - opentelemetry-cpp-win-amd64.zip
+
+upload_to_stevedore_testing:
+  name: upload to stevedore testing
+  agent:
+    image: build-system/unity-ubuntu-18.04:v1.0.3-1042326
+    flavor: b1.small
+    type: Unity::VM
+  variables:
+    VCPKG_REPO_BASELINE_COMMIT: {{ vcpkg_repo_baseline_commit }}
+    OTEL_CPP_VERSION: {{ opentelemetry_cpp_version }}
+  commands:
+    - |
+      set -euxo pipefail
+      curl -sSo StevedoreUpload "$STEVEDORE_UPLOAD_TOOL_LINUX_X64_URL"
+      chmod +x StevedoreUpload
+      ./StevedoreUpload --version-len=23 --repo=testing --version="${OTEL_CPP_VERSION}-${VCPKG_REPO_BASELINE_COMMIT:0:8}-${GIT_REVISION:0:8}" opentelemetry-cpp-lin-amd64.zip opentelemetry-cpp-mac-amd64.zip opentelemetry-cpp-mac-arm64.zip opentelemetry-cpp-win-amd64.zip
+  skip_checkout: true
+  dependencies:
+    - .yamato/build-and-upload.yml#build_linux
+    - .yamato/build-and-upload.yml#build_mac_amd64
+    - .yamato/build-and-upload.yml#build_mac_arm64
+    - .yamato/build-and-upload.yml#build_windows

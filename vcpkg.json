@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        { "name":"opentelemetry-cpp", "features":["otlp"] }
+    ],
+    "overrides": [
+        { "name": "opentelemetry-cpp", "version": "OTEL_CPP_VERSION" }
+    ],
+    "builtin-baseline": "BASELINE_COMMIT"
+}

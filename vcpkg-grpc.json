@@ -1,0 +1,9 @@
+{
+    "dependencies": [
+        { "name":"grpc" }
+    ],
+    "overrides": [
+        { "name": "grpc", "version": "GRPC_VERSION" }
+    ],
+    "builtin-baseline": "BASELINE_COMMIT"
+}
