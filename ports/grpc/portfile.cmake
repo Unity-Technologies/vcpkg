@@ -21,6 +21,9 @@ vcpkg_from_github(
         00015-disable-download-archive.patch
 )
 
+message(TARGET_TRIPLET="${TARGET_TRIPLET}")
+message(HOST_TRIPLET="${HOST_TRIPLET}")
+
 if(NOT TARGET_TRIPLET STREQUAL HOST_TRIPLET)
     vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/tools/grpc")
 endif()

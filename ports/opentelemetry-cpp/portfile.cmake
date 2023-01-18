@@ -37,6 +37,10 @@ if(WITH_OTLP)
     file(COPY "${src}/." DESTINATION "${SOURCE_PATH}/third_party/opentelemetry-proto")
     # Create empty .git directory to prevent opentelemetry from cloning it during build time
     file(MAKE_DIRECTORY "${SOURCE_PATH}/third_party/opentelemetry-proto/.git")
+
+    if(NOT TARGET_TRIPLET STREQUAL HOST_TRIPLET)
+        vcpkg_add_to_path(PREPEND "${CURRENT_HOST_INSTALLED_DIR}/tools/grpc")
+    endif()
 endif()
 
 vcpkg_cmake_configure(
